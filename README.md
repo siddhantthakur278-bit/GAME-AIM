@@ -2,13 +2,13 @@
 
 A real-time **Augmented Reality (AR) Computer Vision Game** built in Python that turns your live webcam video feed into an interactive sci-fi battleground! Destroy flying 3D-styled anomaly orbs using your hand gestures, pointer reticle, and voice commands.
 
-[![Vercel Deployment](https://img.shields.io/badge/Vercel-Deployed-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://game-aim.vercel.app)
+[![Vercel Deployment](https://img.shields.io/badge/Vercel-Live_Deployment-000000?style=for-the-badge&logo=vercel&logoColor=white)](https://ultron-strange-ued4.vercel.app)
 [![GitHub Repository](https://img.shields.io/badge/GitHub-GAME--AIM-blue?style=for-the-badge&logo=github)](https://github.com/siddhantthakur278-bit/GAME-AIM)
 
 ---
 
 ## 🚀 Live Vercel Deployment Link
-🔗 **Live Web Stream App**: **[https://game-aim.vercel.app](https://game-aim.vercel.app)**
+🔗 **Live Web Browser App**: **[https://ultron-strange-ued4.vercel.app](https://ultron-strange-ued4.vercel.app)**
 
 ---
 
