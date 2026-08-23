@@ -1,6 +1,4 @@
-opencv-python
-mediapipe
+flask
+opencv-python-headless
 numpy
-pygame
-SpeechRecognition
-pyaudio
+pygame-ce
