@@ -23,7 +23,8 @@ HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Altered Reality AR Game - Web Stream</title>
+    <title>Altered Reality AR Game - Web Client</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body {
             background-color: #0d0f17;
@@ -37,19 +38,24 @@ HTML_TEMPLATE = """
             color: #00f0ff;
             text-shadow: 0 0 10px #00f0ff;
         }
-        .stream-container {
+        .canvas-container {
+            position: relative;
             display: inline-block;
             border: 3px solid #00f0ff;
             border-radius: 12px;
             box-shadow: 0 0 25px rgba(0, 240, 255, 0.4);
             overflow: hidden;
             margin-top: 15px;
+            background: #000;
         }
-        img {
+        video, canvas {
             width: 100%;
-            max-width: 960px;
+            max-width: 800px;
             height: auto;
             display: block;
+        }
+        #webcamVideo {
+            transform: scaleX(-1);
         }
         .controls {
             margin-top: 20px;
@@ -63,17 +69,73 @@ HTML_TEMPLATE = """
             border-radius: 4px;
             font-weight: bold;
         }
+        button {
+            background: #00f0ff;
+            border: none;
+            color: #000;
+            padding: 10px 20px;
+            font-size: 1rem;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-bottom: 10px;
+        }
+        button:hover {
+            background: #00c0ff;
+        }
     </style>
 </head>
 <body>
     <h1>🌌 Altered Reality (AR) Webcam Game</h1>
-    <p>Live Web Stream with Real-Time Hand Tracking & 3D AR Effects</p>
-    <div class="stream-container">
-        <img src="/video_feed" alt="AR Game Feed">
+    <p>Client-Side Web Cam Stream & Real-Time AR Game</p>
+    
+    <button onclick="startCamera()">📷 Enable Camera</button>
+
+    <div class="canvas-container">
+        <video id="webcamVideo" autoplay playsinline style="display:none;"></video>
+        <canvas id="gameCanvas" width="640" height="480"></canvas>
     </div>
+
     <div class="controls">
-        <p><span class="badge">CONTROLS</span> Move your hand in front of your webcam to aim & shoot flying anomalies!</p>
+        <p><span class="badge">CONTROLS</span> Point your hand towards flying orbs to lock scope & blast them!</p>
     </div>
+
+    <script>
+        const video = document.getElementById('webcamVideo');
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        async function startCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                video.srcObject = stream;
+                video.onloadedmetadata = () => {
+                    video.play();
+                    requestAnimationFrame(drawLoop);
+                };
+            } catch (err) {
+                alert("Camera access denied or unavailable: " + err);
+            }
+        }
+
+        function drawLoop() {
+            ctx.save();
+            ctx.scale(-1, 1);
+            ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
+            ctx.restore();
+
+            // Simple client overlay fallback for browser rendering
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(20, 20, canvas.width - 40, 50);
+
+            ctx.fillStyle = '#00f0ff';
+            ctx.font = '20px Segoe UI';
+            ctx.fillText('LEVEL 1: COSMIC INCURSION', 40, 52);
+
+            requestAnimationFrame(drawLoop);
+        }
+    </script>
 </body>
 </html>
 """
