@@ -1,7 +1,8 @@
 import cv2
 import numpy as np
 import time
-from flask import Flask, render_template_string, Response, jsonify
+import math
+from flask import Flask, render_template_string, Response, jsonify, request
 
 app = Flask(__name__)
 
@@ -11,7 +12,7 @@ class WebGameEngine:
         self.score = 0
         self.combo = 0
         self.level = 1
-        self.enemies = [{'x': 320, 'y': 200, 'vx': 1.5, 'vy': 1.0, 'radius': 50}]
+        self.enemies = [{'x': 320, 'y': 200, 'vx': 1.0, 'vy': 0.8, 'radius': 55}]
         self.last_spawn = time.time()
 
     def update(self):
@@ -21,9 +22,9 @@ class WebGameEngine:
             self.enemies.append({
                 'x': float(np.random.randint(100, 540)),
                 'y': float(np.random.randint(120, 300)),
-                'vx': float(np.random.uniform(-2, 2)),
-                'vy': float(np.random.uniform(-1, 1)),
-                'radius': 50
+                'vx': float(np.random.uniform(-1.5, 1.5)),
+                'vy': float(np.random.uniform(-1.0, 1.0)),
+                'radius': 55
             })
 
         for e in self.enemies:
@@ -33,17 +34,15 @@ class WebGameEngine:
             if e['y'] < 80 or e['y'] > 360: e['vy'] *= -1
 
     def hit_test(self, x, y):
-        hit = False
         for e in self.enemies[:]:
             dist = math.hypot(e['x'] - x, e['y'] - y)
-            if dist < e['radius'] + 60:
+            if dist < e['radius'] + 100: # Super large 100px hit range
                 self.enemies.remove(e)
                 self.score += 100
                 self.combo += 1
-                hit = True
-        return hit
+                return True
+        return False
 
-import math
 game_engine = WebGameEngine()
 
 HTML_TEMPLATE = """
@@ -52,6 +51,9 @@ HTML_TEMPLATE = """
 <head>
     <title>Altered Reality AR Game - Web Client</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- MediaPipe Hands CDN for in-browser client-side hand tracking -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
     <style>
         body {
             background-color: #0d0f17;
@@ -80,9 +82,6 @@ HTML_TEMPLATE = """
             max-width: 800px;
             height: auto;
             display: block;
-        }
-        #webcamVideo {
-            transform: scaleX(-1);
         }
         .controls {
             margin-top: 20px;
@@ -114,9 +113,9 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <h1>🌌 Altered Reality (AR) Webcam Game</h1>
-    <p>Live Web Browser Camera Game</p>
+    <p>Client-Side MediaPipe Hand Tracking AR Engine</p>
     
-    <button onclick="startCamera()">📷 Click to Start Camera & Play</button>
+    <button id="startBtn" onclick="startCamera()">🖐️ Click to Start Hand Tracking & Play</button>
 
     <div class="canvas-container">
         <video id="webcamVideo" autoplay playsinline style="display:none;"></video>
@@ -124,7 +123,7 @@ HTML_TEMPLATE = """
     </div>
 
     <div class="controls">
-        <p><span class="badge">CONTROLS</span> Move mouse / finger on video to lock target reticle & blast orbs!</p>
+        <p><span class="badge">CONTROLS</span> Raise your hand in front of your webcam to lock scope & blast orbs!</p>
     </div>
 
     <script>
@@ -134,18 +133,121 @@ HTML_TEMPLATE = """
 
         let gameState = { score: 0, combo: 0, level: 1, enemies: [] };
         let pointer = { x: 320, y: 240 };
+        let handsDetector = null;
+        let camera = null;
+
+        async function updateEngine() {
+            try {
+                const res = await fetch('/api/state');
+                gameState = await res.json();
+            } catch(e) {}
+        }
+        setInterval(updateEngine, 200);
+
+        function onResults(results) {
+            // Draw mirrored camera frame
+            ctx.save();
+            ctx.scale(-1, 1);
+            ctx.drawImage(results.image, -canvas.width, 0, canvas.width, canvas.height);
+            ctx.restore();
+
+            // Track Index Fingertip Landmark (ID 8)
+            if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                const lm = results.multiHandLandmarks[0][8];
+                pointer.x = (1 - lm.x) * canvas.width; // Mirrored X
+                pointer.y = lm.y * canvas.height;
+
+                // Auto-trigger blast attack at fingertip position
+                fetch(`/api/hit?x=${Math.round(pointer.x)}&y=${Math.round(pointer.y)}`)
+                    .then(res => res.json())
+                    .then(data => gameState = data);
+            }
+
+            // Render HUD Header
+            ctx.fillStyle = 'rgba(10, 15, 25, 0.75)';
+            ctx.fillRect(20, 15, canvas.width - 40, 50);
+            ctx.strokeStyle = '#00f0ff';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(20, 15, canvas.width - 40, 50);
+
+            ctx.fillStyle = '#00f0ff';
+            ctx.font = 'bold 18px Segoe UI';
+            ctx.fillText(`LEVEL ${gameState.level}: COSMIC INCURSION`, 40, 48);
+
+            ctx.fillStyle = '#ffffff';
+            ctx.fillText(`SCORE: ${String(gameState.score).padStart(6, '0')}`, canvas.width - 200, 48);
+
+            // Render Flying Orbs
+            if (gameState.enemies) {
+                gameState.enemies.forEach(e => {
+                    ctx.beginPath();
+                    ctx.arc(e.x, e.y, e.radius + 12, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 215, 255, 0.35)';
+                    ctx.fill();
+
+                    ctx.beginPath();
+                    ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
+                    ctx.fillStyle = '#00d7ff';
+                    ctx.fill();
+                    ctx.strokeStyle = '#ffffff';
+                    ctx.lineWidth = 3;
+                    ctx.stroke();
+
+                    ctx.beginPath();
+                    ctx.arc(e.x - 12, e.y - 12, 10, 0, Math.PI * 2);
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fill();
+                });
+            }
+
+            // Render Target Scope Reticle on Fingertip
+            ctx.beginPath();
+            ctx.arc(pointer.x, pointer.y, 24, 0, Math.PI * 2);
+            ctx.strokeStyle = '#ffff00';
+            ctx.lineWidth = 3;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(pointer.x, pointer.y, 6, 0, Math.PI * 2);
+            ctx.fillStyle = '#ffff00';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(pointer.x - 38, pointer.y);
+            ctx.lineTo(pointer.x + 38, pointer.y);
+            ctx.moveTo(pointer.x, pointer.y - 38);
+            ctx.lineTo(pointer.x, pointer.y + 38);
+            ctx.strokeStyle = '#ffff00';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+        }
 
         async function startCamera() {
-            try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
-                video.srcObject = stream;
-                video.onloadedmetadata = () => {
-                    video.play();
-                    requestAnimationFrame(gameLoop);
-                };
-            } catch (err) {
-                alert("Camera permission error: " + err);
-            }
+            document.getElementById('startBtn').innerText = "⏳ Loading Hand Tracker...";
+            
+            handsDetector = new Hands({
+                locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+            });
+
+            handsDetector.setOptions({
+                maxNumHands: 1,
+                modelComplexity: 1,
+                minDetectionConfidence: 0.5,
+                minTrackingConfidence: 0.5
+            });
+
+            handsDetector.onResults(onResults);
+
+            camera = new Camera(video, {
+                onFrame: async () => {
+                    await handsDetector.send({ image: video });
+                },
+                width: 640,
+                height: 480
+            });
+
+            camera.start();
+            document.getElementById('startBtn').style.display = 'none';
         }
 
         canvas.addEventListener('mousemove', (e) => {
@@ -159,83 +261,6 @@ HTML_TEMPLATE = """
             const data = await res.json();
             gameState = data;
         });
-
-        async function updateEngine() {
-            const res = await fetch('/api/state');
-            gameState = await res.json();
-        }
-
-        setInterval(updateEngine, 200);
-
-        function gameLoop() {
-            ctx.save();
-            ctx.scale(-1, 1);
-            ctx.drawImage(video, -canvas.width, 0, canvas.width, canvas.height);
-            ctx.restore();
-
-            // Render HUD Header
-            ctx.fillStyle = 'rgba(10, 15, 25, 0.7)';
-            ctx.fillRect(20, 15, canvas.width - 40, 50);
-            ctx.strokeStyle = '#00f0ff';
-            ctx.lineWidth = 2;
-            ctx.strokeRect(20, 15, canvas.width - 40, 50);
-
-            ctx.fillStyle = '#00f0ff';
-            ctx.font = 'bold 18px Segoe UI';
-            ctx.fillText(`LEVEL ${gameState.level}: COSMIC INCURSION`, 40, 48);
-
-            ctx.fillStyle = '#ffffff';
-            ctx.fillText(`SCORE: ${String(gameState.score).padStart(6, '0')}`, canvas.width - 200, 48);
-
-            // Render Volumetric Enemies
-            if (gameState.enemies) {
-                gameState.enemies.forEach(e => {
-                    // Outer glow
-                    ctx.beginPath();
-                    ctx.arc(e.x, e.y, e.radius + 10, 0, Math.PI * 2);
-                    ctx.fillStyle = 'rgba(0, 215, 255, 0.3)';
-                    ctx.fill();
-
-                    // Core sphere
-                    ctx.beginPath();
-                    ctx.arc(e.x, e.y, e.radius, 0, Math.PI * 2);
-                    ctx.fillStyle = '#00d7ff';
-                    ctx.fill();
-                    ctx.strokeStyle = '#ffffff';
-                    ctx.lineWidth = 3;
-                    ctx.stroke();
-
-                    // Specular Highlight
-                    ctx.beginPath();
-                    ctx.arc(e.x - 12, e.y - 12, 10, 0, Math.PI * 2);
-                    ctx.fillStyle = '#ffffff';
-                    ctx.fill();
-                });
-            }
-
-            // Render Scope Reticle
-            ctx.beginPath();
-            ctx.arc(pointer.x, pointer.y, 22, 0, Math.PI * 2);
-            ctx.strokeStyle = '#ffff00';
-            ctx.lineWidth = 3;
-            ctx.stroke();
-
-            ctx.beginPath();
-            ctx.arc(pointer.x, pointer.y, 6, 0, Math.PI * 2);
-            ctx.fillStyle = '#ffff00';
-            ctx.fill();
-
-            ctx.beginPath();
-            ctx.moveTo(pointer.x - 35, pointer.y);
-            ctx.lineTo(pointer.x + 35, pointer.y);
-            ctx.moveTo(pointer.x, pointer.y - 35);
-            ctx.lineTo(pointer.x, pointer.y + 35);
-            ctx.strokeStyle = '#ffff00';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
-            requestAnimationFrame(gameLoop);
-        }
     </script>
 </body>
 </html>
@@ -266,8 +291,6 @@ def hit():
         'level': game_engine.level,
         'enemies': game_engine.enemies
     })
-
-from flask import request
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5001, debug=False)
